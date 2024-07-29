@@ -1,48 +1,15 @@
 import express from 'express';
-import { ApolloServer } from 'apollo-server-express';
-import { makeExecutableSchema } from '@graphql-tools/schema';
-import http from 'http';
 import mongoose, { ConnectOptions } from 'mongoose';
-import typeDefs from './schema';
-import { execute, subscribe } from 'graphql';
-import resolvers from './resolvers';
-import { PubSub } from 'graphql-subscriptions';
-import { SubscriptionServer } from 'subscriptions-transport-ws';
 
 const app = express() as any;
 
-const pubsub = new PubSub();
-
+// Conectar ao MongoDB no Docker
 mongoose.connect(process.env.MONGO_URL!, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 } as ConnectOptions);
 
-const schema = makeExecutableSchema({ typeDefs, resolvers });
 
-const server = new ApolloServer({
-    schema,
-    context: () => ({ pubsub }),
-});
-
-server.start().then(() => {
-    server.applyMiddleware({ app });
-
-    const httpServer = http.createServer(app);
-    new SubscriptionServer(
-        {
-            execute,
-            subscribe,
-            schema,
-            onConnect: () => ({ pubsub }),
-        },
-        {
-            server: httpServer,
-            path: server.graphqlPath,
-        }
-    );
-
-    httpServer.listen(4000, () =>
-        console.log(`Server ready at http://localhost:4000${server.graphqlPath}`)
-    );
-});
+app.listen({ port: 4000 }, () =>
+    console.log(`Server ready at http://localhost:4000`)
+);

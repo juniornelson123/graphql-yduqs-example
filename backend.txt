@@ -1,0 +1,121 @@
+npm install express graphql express-graphql mongoose apollo-server-express
+
+
+npm install subscriptions-transport-ws graphql-subscriptions
+
+Criar resolvers
+
+Query: {
+        messages: async () => await Message.find(),
+        users: async () => await User.find(),
+    },
+    Mutation: {
+        postMessage: async (_, { user, content }, { pubsub }) => {
+            const message = new Message({ user, content });
+            pubsub.publish('MESSAGE_ADDED', { messageAdded: message });
+            await message.save();
+            return message.id;
+        },
+        addUser: async (_, { username }) => {
+            const verifyUser = await User.findOne({ username: username })
+            if(verifyUser){
+                return verifyUser
+            }
+            const user = new User({ username });
+            await user.save();
+            return user;
+        },
+    },
+    Subscription: {
+        messageAdded: {
+            subscribe: (_, __, { pubsub }) => {
+                if (!pubsub) {
+                    throw new Error('PubSub is not initialized');
+                }
+
+                return pubsub.asyncIterator('MESSAGE_ADDED')
+            }
+        },
+    },
+
+
+ Criar schema
+ 
+ type Message {
+        id: ID!
+        content: String!
+        user: String!
+    }
+
+    type User {
+        id: ID!
+        username: String!
+    }
+
+    type Query {
+        messages: [Message!]
+        users: [User!]
+    }
+
+    type Mutation {
+        postMessage(user: String!, content: String!): ID!
+        addUser(username: String!): User
+    }
+    type Subscription {
+        messageAdded: Message
+    }
+
+
+
+
+Server 
+
+
+import express from 'express';
+import { ApolloServer } from 'apollo-server-express';
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import http from 'http';
+import mongoose, { ConnectOptions } from 'mongoose';
+import typeDefs from './schema';
+import { execute, subscribe } from 'graphql';
+import resolvers from './resolvers';
+import { PubSub } from 'graphql-subscriptions';
+import { SubscriptionServer } from 'subscriptions-transport-ws';
+
+const app = express() as any;
+
+const pubsub = new PubSub();
+
+mongoose.connect(process.env.MONGO_URL!, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+} as ConnectOptions);
+
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+
+const server = new ApolloServer({
+    schema,
+    context: () => ({ pubsub }),
+});
+
+server.start().then(() => {
+    server.applyMiddleware({ app });
+
+    const httpServer = http.createServer(app);
+    new SubscriptionServer(
+        {
+            execute,
+            subscribe,
+            schema,
+            onConnect: () => ({ pubsub }),
+        },
+        {
+            server: httpServer,
+            path: server.graphqlPath,
+        }
+    );
+
+    httpServer.listen(4000, () =>
+        console.log(`Server ready at http://localhost:4000${server.graphqlPath}`)
+    );
+});    

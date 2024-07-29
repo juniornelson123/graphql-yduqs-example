@@ -1,0 +1,117 @@
+Instalar no front end
+
+npm install subscriptions-transport-ws
+
+
+
+Atualizar apollo cliente
+
+
+// src/ApolloClient.ts
+import { ApolloClient, InMemoryCache, split } from '@apollo/client';
+import { WebSocketLink } from '@apollo/client/link/ws';
+import { HttpLink } from '@apollo/client/link/http';
+import { getMainDefinition } from '@apollo/client/utilities';
+
+const httpLink = new HttpLink({
+    uri: 'http://localhost:4000/graphql',
+});
+
+const wsLink = new WebSocketLink({
+    uri: `ws://localhost:4000/graphql`,
+    options: {
+        reconnect: true,
+    },
+});
+
+const splitLink = split(
+    ({ query }) => {
+        const definition = getMainDefinition(query);
+        return (
+            definition.kind === 'OperationDefinition' &&
+            definition.operation === 'subscription'
+        );
+    },
+    wsLink,
+    httpLink
+);
+
+const client = new ApolloClient({
+    link: splitLink,
+    cache: new InMemoryCache(),
+});
+
+export default client;
+
+Atualizar subscription
+
+// src/Messages.tsx
+import React, { useEffect } from 'react';
+import { useQuery, gql, useSubscription } from '@apollo/client';
+
+const GET_MESSAGES = gql`
+    query {
+        messages {
+            id
+            user
+            content
+        }
+    }
+`;
+
+const MESSAGE_ADDED = gql`
+    subscription {
+        messageAdded {
+            id
+            user
+            content
+        }
+    }
+`;
+
+interface Message {
+    id: string;
+    user: string;
+    content: string;
+}
+
+const Messages: React.FC<{ user: string }> = ({ user }) => {
+    const { data, loading, error, subscribeToMore } = useQuery(GET_MESSAGES);
+    const { data: subscriptionData } = useSubscription(MESSAGE_ADDED);
+
+    useEffect(() => {
+        subscribeToMore({
+            document: MESSAGE_ADDED,
+            updateQuery: (prev, { subscriptionData }) => {
+                if (!subscriptionData.data) return prev;
+                const newMessage = subscriptionData.data.messageAdded;
+                return Object.assign({}, prev, {
+                    messages: [...prev.messages, newMessage],
+                });
+            },
+        });
+    }, [subscribeToMore]);
+
+    if (loading) return <p>Loading...</p>;
+    if (error) return <p>Error :(</p>;
+
+    return (
+        <div>
+            {data.messages.map(({ id, user: messageUser, content }: Message) => (
+                <div key={id} style={{ display: 'flex', justifyContent: user === messageUser ? 'flex-end' : 'flex-start', paddingBottom: '1em' }}>
+                    <div style={{
+                        background: user === messageUser ? '#58bf56' : '#e5e6ea',
+                        color: user === messageUser ? 'white' : 'black',
+                        padding: '1em',
+                        borderRadius: '1em',
+                        maxWidth: '60%'
+                    }}>
+                        {content}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+export default Messages;
