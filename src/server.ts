@@ -13,7 +13,7 @@ const app = express() as any;
 
 const pubsub = new PubSub();
 
-mongoose.connect(process.env.MONGO_URL!, {
+mongoose.connect("mongodb+srv://junior123nelson:glylWqACgyBBlUrN@cluster0.3ju5ces.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 } as ConnectOptions);
